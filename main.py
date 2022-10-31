@@ -3,10 +3,30 @@ from tensorflow.keras.layers import Dense, Activation
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.regularizers import l2
 
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import numpy as np
+import random
+
+
+def get_hyperparams(choices: dict) -> dict:
+    """
+    Returns a set of hyper-parameters to try.
+
+    :param {dict} choices - A dict of choices to try
+    :return {dict} A config
+    """
+    config = {}
+    for key, val in choices.items():
+        if isinstance(val, list):
+            config[key] = random.choice(val)
+        if isinstance(val, tuple):
+            if isinstance(val[0], int):
+                config[key] = random.randint(*val)
+            else:
+                config[key] = random.random() * val[1] + (val[1] - val[0])
+
+    return config
 
 
 def preprocess_data(preprocessor: str, X_train: np.ndarray, X_test: np.ndarray) -> tuple:
@@ -82,7 +102,7 @@ def get_model(n_layers: int, n_units: int, initializer: str, lr: float) -> Seque
     return model
 
 
-def fit_model(model: Sequential, n_epochs: int, X_train: np.ndarray, X_test: np.ndarray, y_train: np.ndarray, y_test: np.ndarray) -> None:
+def fit_model(model: Sequential, n_epochs: int, X_train: np.ndarray, X_test: np.ndarray, y_train: np.ndarray, y_test: np.ndarray) -> float:
     """
     Fits a model.
 
@@ -92,12 +112,27 @@ def fit_model(model: Sequential, n_epochs: int, X_train: np.ndarray, X_test: np.
     :param {np.ndarray} X_test - test data
     :param {np.ndarray} y_train - training labels
     :param {np.ndarray} y_test - test labels
+
+    :return {float} the validation accuracy
     """
     history = model.fit(X_train, y_train, epochs=n_epochs,
                         batch_size=128, validation_data=(X_test, y_test), verbose=1)
 
+    return history.history['val_accuracy'][-1]
 
-def run_experiment(X_train, X_test, y_train, y_test, config):
+
+def run_experiment(X_train, X_test, y_train, y_test, config) -> float:
+    """
+    Runs one experiment.
+
+    :param {np.ndarray} X_train - training data
+    :param {np.ndarray} X_test - test data
+    :param {np.ndarray} y_train - training labels
+    :param {np.ndarray} y_test - test labels
+    :param {dict} config - the configuration to run
+
+    :return {float} the validation accuracy
+    """
     # Preprocess data
     preprocessor = config['preprocessor']
     X_train, X_test = preprocess_data(preprocessor, X_train, X_test)
@@ -117,17 +152,7 @@ def run_experiment(X_train, X_test, y_train, y_test, config):
     model.summary()
 
     # Fit model
-    fit_model(model, 100, X_train, X_test, y_train, y_test)
-
-
-def get_config():
-    return {
-        'preprocessor': 'standard',
-        'lr_scheme': 'lipschitz',
-        'initializer': 'zeros',
-        'n_layers': 1,
-        'n_units': 10
-    }
+    return fit_model(model, 100, X_train, X_test, y_train, y_test)
 
 
 if __name__ == '__main__':
@@ -142,5 +167,23 @@ if __name__ == '__main__':
     y_train = to_categorical(y_train, 10)
     y_test = to_categorical(y_test, 10)
 
-    config = get_config()
-    run_experiment(X_train, X_test, y_train, y_test, config)
+    choices = {
+        'preprocessor': ['minmax', 'standard'],
+        'lr_scheme': ['standard', 'lipschitz'],
+        'n_layers': (1, 4),
+        'n_units': [5, 10, 20],
+        'initializer': ['zeros', 'glorot_uniform']
+    }
+
+    best_acc = 0.
+    best_config = None
+    for _ in range(2):
+        config = get_hyperparams(choices)
+        val_acc = run_experiment(X_train, X_test, y_train, y_test, config)
+
+        if val_acc > best_acc:
+            best_acc = val_acc
+            best_config = config
+
+    print('Best config:', best_config)
+    print('Best score:', best_acc)
