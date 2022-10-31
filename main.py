@@ -1,12 +1,13 @@
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Activation
-from tensorflow.keras.optimizers import SGD
-from tensorflow.keras.datasets import mnist
-from tensorflow.keras.utils import to_categorical
-
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-import numpy as np
 import random
+
+import mlflow
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.layers import Dense, Activation
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.utils import to_categorical
 
 
 def get_hyperparams(choices: dict) -> dict:
@@ -91,7 +92,7 @@ def get_model(n_layers: int, n_units: int, initializer: str, lr: float) -> Seque
 
     if n_layers >= 2:
         model.add(Activation('relu'))
-        model.add(Dense(10, name=f'layer{n_layers-2}',
+        model.add(Dense(10, name=f'layer{n_layers}',
                   kernel_initializer=initializer, bias_initializer=initializer))
 
     model.add(Activation('softmax'))
@@ -175,15 +176,30 @@ if __name__ == '__main__':
         'initializer': ['zeros', 'glorot_uniform']
     }
 
+    # Create an experiment
+    experiment_id = mlflow.create_experiment('mnist')
+    experiment = mlflow.get_experiment(experiment_id)
+    print('Running experiment:', experiment.name)
+    print('Artifact location:', experiment.artifact_location)
+
+    # Set up best config tracking
     best_acc = 0.
     best_config = None
     for _ in range(2):
-        config = get_hyperparams(choices)
-        val_acc = run_experiment(X_train, X_test, y_train, y_test, config)
+        with mlflow.start_run(experiment_id=experiment_id):
+            # Get the config
+            config = get_hyperparams(choices)
 
-        if val_acc > best_acc:
-            best_acc = val_acc
-            best_config = config
+            # Log parameters
+            for param, val in config.items():
+                mlflow.log_param(param, val)
+
+            val_acc = run_experiment(X_train, X_test, y_train, y_test, config)
+            mlflow.log_metric('val_acc', val_acc)
+
+            if val_acc > best_acc:
+                best_acc = val_acc
+                best_config = config
 
     print('Best config:', best_config)
     print('Best score:', best_acc)
