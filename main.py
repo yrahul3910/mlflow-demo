@@ -176,6 +176,8 @@ if __name__ == '__main__':
         'initializer': ['zeros', 'glorot_uniform']
     }
 
+    mlflow.tensorflow.autolog()
+
     # Create an experiment
     experiment_id = mlflow.create_experiment('mnist')
     experiment = mlflow.get_experiment(experiment_id)
